@@ -9,22 +9,30 @@ class Car:
     def current_lane(self):
         return self._current_lane
 
-    @property
-    def lane_order(self):
-        return self._lane_order
-
-    @property
-    def new_lane(self):
-        return self._new_lane
-
     @current_lane.setter
     def current_lane(self, value):
         self._current_lane = value
+
+    @property
+    def lane_order(self):
+        return self._lane_order
 
     @lane_order.setter
     def lane_order(self, value):
         self._lane_order = value
 
+    @property
+    def new_lane(self):
+        return self._new_lane
+
     @new_lane.setter
     def new_lane(self, value):
         self._new_lane = value
+
+    @property
+    def execution_order(self):
+        return self._execution_order
+
+    @execution_order.setter
+    def execution_order(self, value):
+        self._execution_order = value
