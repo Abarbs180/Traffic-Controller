@@ -1,38 +1,38 @@
 class Car:
-    last_id = 0
+    lastId = 0
 
     def __init__(self):
-        self.id = Car.last_id
-        Car.last_id += 1
+        self.id = Car.lastId
+        Car.lastId += 1
 
     @property
-    def current_lane(self):
-        return self._current_lane
+    def currentLane(self):
+        return self._currentLane
 
-    @current_lane.setter
-    def current_lane(self, value):
-        self._current_lane = value
-
-    @property
-    def lane_order(self):
-        return self._lane_order
-
-    @lane_order.setter
-    def lane_order(self, value):
-        self._lane_order = value
+    @currentLane.setter
+    def currentLane(self, value):
+        self._currentLane = value
 
     @property
-    def new_lane(self):
-        return self._new_lane
+    def laneOrder(self):
+        return self._laneOrder
 
-    @new_lane.setter
-    def new_lane(self, value):
-        self._new_lane = value
+    @laneOrder.setter
+    def laneOrder(self, value):
+        self._laneOrder = value
 
     @property
-    def execution_order(self):
-        return self._execution_order
+    def newLane(self):
+        return self._newLane
 
-    @execution_order.setter
-    def execution_order(self, value):
-        self._execution_order = value
+    @newLane.setter
+    def newLane(self, value):
+        self._newLane = value
+
+    @property
+    def executionOrder(self):
+        return self._executionOrder
+
+    @executionOrder.setter
+    def executionOrder(self, value):
+        self._executionOrder = value
