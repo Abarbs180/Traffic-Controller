@@ -1,6 +1,7 @@
 import math
 from collections import OrderedDict
 
+
 class TrafficController:
 
     # Make 'laneClosure' a property here
@@ -10,29 +11,44 @@ class TrafficController:
         self.totalCars = len(cars)
         self.lanes = lanes
         self.cars = cars
-        self.avgDistribution = int(len(cars) / lanes)
+        self.avgDistribution = len(cars) / lanes
+        self.emptyLaneSpaces = dict()
+        self.occupiedLaneSpaces = dict()
+        self.maxCarsInTrafficLane = 0
 
         # Construct lanes
-        for lane in range(1, lanes+1):
-            self.traffic.append(
-                {
-                    "cars": [],
-                    "totalCars": 0
-                }
-            )
+        for lane in range(0, lanes):
+            self.traffic.append({"cars": [], "totalCars": 0})
 
         # Assign cars to lanes
         for car in cars:
             currentLane = self.traffic[car.currentLane]
 
-            currentLane['cars'].append(car)
-            currentLane['totalCars'] += 1
+            currentLane["cars"].append(car)
+            currentLane["totalCars"] += 1
 
-            car.laneOrder = len(currentLane['cars']) - 1
+            car.laneOrder = len(currentLane["cars"]) - 1
 
         # Get number of cars in each lane
         for lane in self.traffic:
-            self.carsInEachLane.append(lane['totalCars'])
+            if lane["totalCars"] > self.maxCarsInTrafficLane:
+                self.maxCarsInTrafficLane = lane["totalCars"]
+
+            self.carsInEachLane.append(lane["totalCars"])
+
+        for lane in range(0, len(self.carsInEachLane)):
+            carsInLane = self.carsInEachLane[lane]
+            self.emptyLaneSpaces[lane] = list(
+                range(carsInLane, self.maxCarsInTrafficLane)
+            )
+            self.occupiedLaneSpaces[lane] = list(range(0, carsInLane))
+
+        # self.carsInEachLane = [4, 5, 10, 5]
+        # self.carsInEachLane = [8, 14, 7, 7]
+        # self.carsInEachLane = [5, 8, 4, 7]
+        # self.carsInEachLane = [7, 8, 4, 5]
+        # self.carsInEachLane = [7, 3, 7, 7]
+        # self.carsInEachLane: [9, 9, 4, 9, 9] interesting case
 
     ############## PROPERTIES ##############
 
@@ -50,67 +66,138 @@ class TrafficController:
         diffFromAvg = []
 
         for num in cars:
-            diff = num - math.floor(avg)
+            # may need to be diff = num - math.floor(avg)
+            diff = num - math.ceil(avg)
             diffFromAvg.append(diff)
 
         return diffFromAvg
 
-    def addInstruction(avg, newDiffs, firstLaneIdx, secondLaneIdx, emptyLaneSpaces, executionOrder):
+    def getVerticalAdjustmentData(
+        newLaneOccupiedSpaces,
+        newLaneEmptySpaces,
+        currentLaneOccupiedSpaces,
+        currentLaneEmptySpaces,
+        carsToChangeLanes,
+    ):
+        verticalAdjustmentData = {}
+        newIdx = newLaneOccupiedSpaces.index(
+            currentLaneOccupiedSpaces[-carsToChangeLanes]
+        )
+        newSpacesToAdjust = newLaneOccupiedSpaces[newIdx + 1 :]
+
+        copiedNewLaneOccupiedSpaces = newLaneOccupiedSpaces[:]
+
+        laneOrderRange = currentLaneOccupiedSpaces[-carsToChangeLanes:]
+
+        currentLaneEmptySpaces[0:0] = laneOrderRange
+        del currentLaneOccupiedSpaces[-carsToChangeLanes:]
+
+        for space in range(0, len(copiedNewLaneOccupiedSpaces)):
+            newLanePosition = space + carsToChangeLanes
+
+            if space in newSpacesToAdjust:
+                if newLanePosition in newLaneEmptySpaces:
+                    newEmptySpaceIdx = newLaneEmptySpaces.index(newLanePosition)
+                    del newLaneEmptySpaces[newEmptySpaceIdx]
+
+                if newLanePosition not in newLaneOccupiedSpaces:
+                    newLaneOccupiedSpaces.append(newLanePosition)
+
+        correctedNewLaneConfig = newLaneOccupiedSpaces[:]
+        for space in laneOrderRange:
+            if space in correctedNewLaneConfig:
+                spaceToDelIdx = correctedNewLaneConfig.index(space)
+                del correctedNewLaneConfig[spaceToDelIdx]
+
+        verticalAdjustmentData["verticallyAdjustedLane"] = correctedNewLaneConfig
+        verticalAdjustmentData["laneOrderRange"] = laneOrderRange
+
+        return verticalAdjustmentData
+
+    def getNewLaneOrderData(
+        occupiedLaneSpaces, emptyLaneSpaces, currentLane, newLane, carsToChangeLanes
+    ):
+        laneOrderRange = []
+        newLaneEmptySpaces = emptyLaneSpaces[newLane]
+        newLaneOccupiedSpaces = occupiedLaneSpaces[newLane]
+        currentLaneEmptySpaces = emptyLaneSpaces[currentLane]
+        currentLaneOccupiedSpaces = occupiedLaneSpaces[currentLane]
+        newLaneOrderData = {"laneOrderRange": None, "verticallyAdjustedLane": None}
+
+        # Think really hard about how to make this more performant
+        # i.e somehow do this without looping since we're already in a loop
+        copiedCurrentLaneOccupiedSpaces = currentLaneOccupiedSpaces[:]
+        for occupiedSpace in copiedCurrentLaneOccupiedSpaces:
+            if len(laneOrderRange) == carsToChangeLanes:
+                break
+            elif occupiedSpace in newLaneEmptySpaces:
+                laneOrderRange.append(occupiedSpace)
+                emptyNewLaneSpaceIndex = newLaneEmptySpaces.index(occupiedSpace)
+                currentLaneOccupiedSpaceIndex = currentLaneOccupiedSpaces.index(
+                    occupiedSpace
+                )
+
+                # Remove occupied space from current lane, add it as empty space
+                # in current lane
+                del currentLaneOccupiedSpaces[currentLaneOccupiedSpaceIndex]
+                currentLaneEmptySpaces.append(occupiedSpace)
+
+                # Remove empty space from new lane, add it as occupied space
+                # in new lane
+                del newLaneEmptySpaces[emptyNewLaneSpaceIndex]
+                newLaneOccupiedSpaces.append(occupiedSpace)
+
+        newLaneOrderData["laneOrderRange"] = laneOrderRange
+
+        if len(newLaneOccupiedSpaces) > len(currentLaneOccupiedSpaces) and not len(
+            laneOrderRange
+        ):
+            newLaneOrderData = TrafficController.getVerticalAdjustmentData(
+                newLaneOccupiedSpaces,
+                newLaneEmptySpaces,
+                currentLaneOccupiedSpaces,
+                currentLaneEmptySpaces,
+                carsToChangeLanes,
+            )
+
+        return newLaneOrderData
+
+    def addInstruction(
+        avg,
+        newDiffs,
+        firstLaneIdx,
+        secondLaneIdx,
+        emptyLaneSpaces,
+        occupiedLaneSpaces,
+        executionOrder,
+    ):
         laneChangeInstruction = None
+        carsToChangeLanes = abs(newDiffs[firstLaneIdx])
+        currentLane, newLane = (
+            (secondLaneIdx, firstLaneIdx)
+            if newDiffs[firstLaneIdx] < 0
+            else (firstLaneIdx, secondLaneIdx)
+        )
 
-        firstLaneDiff = newDiffs[firstLaneIdx]
-        firstLaneCars = avg + newDiffs[firstLaneIdx]
-        secondLaneCars = avg + newDiffs[secondLaneIdx]
+        newLaneOrderData = TrafficController.getNewLaneOrderData(
+            occupiedLaneSpaces, emptyLaneSpaces, currentLane, newLane, carsToChangeLanes
+        )
 
-        # If negative, move cars from second lane to first
-        if firstLaneDiff < 0:
-            currentLane = secondLaneIdx
-            newLane = firstLaneIdx
-
-            if secondLaneIdx in emptyLaneSpaces:
-                laneOrderStart = emptyLaneSpaces[firstLaneIdx][0]
-                laneOrderEnd = laneOrderStart + abs(firstLaneDiff)
-            else:
-                laneOrderStart = firstLaneCars
-                laneOrderEnd = laneOrderStart + abs(firstLaneDiff)
-                
-            laneOrderRange = list(range(laneOrderStart, laneOrderEnd))
-
+        if len(newLaneOrderData["laneOrderRange"]):
             laneChangeInstruction = {
-                'currentLane': currentLane,
-                'newLane': newLane,
-                'carsToChangeLanes': abs(firstLaneDiff),
-                'laneOrderRange': laneOrderRange,
-                'executionOrder': executionOrder
-            }
-
-        # If positive, move cars from first lane to second
-        elif firstLaneDiff > 0:
-            currentLane = firstLaneIdx
-            newLane = secondLaneIdx
-
-            if firstLaneIdx in emptyLaneSpaces:
-                laneOrderStart = emptyLaneSpaces[secondLaneIdx][0]
-                laneOrderEnd = laneOrderStart + abs(firstLaneDiff)
-            else:
-                laneOrderStart = secondLaneCars
-                laneOrderEnd = laneOrderStart + firstLaneDiff
-            
-            laneOrderRange = list(range(laneOrderStart, laneOrderEnd))
-
-            laneChangeInstruction = {
-                'currentLane': currentLane,
-                'newLane': newLane,
-                'carsToChangeLanes': abs(firstLaneDiff),
-                'laneOrderRange': laneOrderRange,
-                'executionOrder': executionOrder
+                "currentLane": currentLane,
+                "newLane": newLane,
+                "carsToChangeLanes": carsToChangeLanes,
+                "laneOrderRange": newLaneOrderData["laneOrderRange"],
+                "verticallyAdjustedLane": newLaneOrderData["verticallyAdjustedLane"],
+                "executionOrder": executionOrder,
             }
 
         return laneChangeInstruction
 
-    def setInstructions(avg, diffsFromAvg, laneClosure):
-        print('\n')
-        print(f'diffsFromAvg: {diffsFromAvg}')
+    def setInstructions(
+        avg, diffsFromAvg, laneClosure, emptyLaneSpaces, occupiedLaneSpaces
+    ):
         newDiffs = diffsFromAvg[:]
 
         # Initially start from both ends i.e move right from
@@ -120,7 +207,6 @@ class TrafficController:
         moveLeft = True
 
         instructions = []
-        emptyLaneSpaces = dict()
 
         # Determines the order of executed instructions
         executionOrder = 1
@@ -138,8 +224,15 @@ class TrafficController:
 
             instructionsLength = len(instructions)
 
+            for i in range(0, len(newDiffs)):
+                numLines = newDiffs[i] + int(avg)
+
+                print(numLines * "🚗 ")
+
+            print("\n")
             # If all pointer values are zero, we want to break to avoid adding
-            # any unnecessary instructions
+            # any unnecessary instructions. Find a better way of breaking, there may
+            # be an edge case where all of these are equal but the algo isn't done yet
             if firstLeft == secondLeft == firstRight == secondRight:
                 break
 
@@ -153,48 +246,56 @@ class TrafficController:
             if firstRight + secondRight < -avg:
                 moveLeft = False
 
+            # TODO: Account for case where lane changes are made from a lane with fewer cars than the
+            # lane it's changing to. Need to concurrently move up cars in lane with more cars and horizontally
+            # shift cars from lane with fewer over to new lane
+
             # TODO: Include case for two neighboring positives, we are currently
             # just adding them together into the same lane, but this is not optimal,
             # should instead be moving both positives to new lanes concurrently
 
-            # Fix corresponding laneClosure movements, look at case for cars = [24, 11, 0, 0]
+            # TODO: Fix corresponding laneClosure movements, look at case for cars = [24, 11, 0, 0]
             # Also becomes a problem when evaluating for cases with less than 4 lanes
             if secondRightIdx in (firstLeftIdx, secondLeftIdx):
-                if laneClosure == 'left':
+                if laneClosure == "left":
                     moveLeft = False
-                elif laneClosure == 'right':
+                elif laneClosure == "right":
                     moveRight = False
-                elif laneClosure == None and (moveRight and moveLeft):
+                elif laneClosure is None and moveRight and moveLeft:
                     moveLeft = False
-            # TODO: Since all lane changes happen concurently, with the exception of the 
+            # TODO: Since all lane changes happen concurently, with the exception of the
             # neighboring positives case, need to fix assignment of execution order.
             # In all cases but the above mentioned, the execution order should always be 1
             if moveRight:
 
-                instruction = TrafficController.addInstruction(avg, newDiffs, firstLeftIdx, secondLeftIdx, emptyLaneSpaces, executionOrder)
-                
-                if instruction:
-                    instructions.append(instruction)
-                    emptyLaneSpaces[instruction['currentLane']] = instruction['laneOrderRange']
+                newInstructionData = {
+                    "avg": avg,
+                    "newDiffs": newDiffs,
+                    "firstLaneIdx": firstLeftIdx,
+                    "secondLaneIdx": secondLeftIdx,
+                    "emptyLaneSpaces": emptyLaneSpaces,
+                    "occupiedLaneSpaces": occupiedLaneSpaces,
+                    "executionOrder": executionOrder,
+                }
 
-                newDiffs[secondLeftIdx] += firstLeft
-                newDiffs[firstLeftIdx] += -firstLeft
+                TrafficController.addInstructionAndMove(
+                    instructions, newInstructionData, firstLeft
+                )
 
             if moveLeft:
+                newInstructionData = {
+                    "avg": avg,
+                    "newDiffs": newDiffs,
+                    "firstLaneIdx": firstRightIdx,
+                    "secondLaneIdx": secondRightIdx,
+                    "emptyLaneSpaces": emptyLaneSpaces,
+                    "occupiedLaneSpaces": occupiedLaneSpaces,
+                    "executionOrder": executionOrder,
+                }
 
-                instruction = TrafficController.addInstruction(avg, newDiffs, firstRightIdx, secondRightIdx, emptyLaneSpaces, executionOrder)
-                
-                if instruction:
-                    instructions.append(instruction)
-                    emptyLaneSpaces[instruction['currentLane']] = instruction['laneOrderRange']
-
-                newDiffs[secondRightIdx] += firstRight
-                newDiffs[firstRightIdx] += -firstRight
-
-            print(emptyLaneSpaces)
-
-            print('\n')
-            print(f'diffsFromAvg: {newDiffs}')
+                TrafficController.addInstructionAndMove(
+                    instructions, newInstructionData, firstRight
+                )
 
             # There are cases where no instructions are set, so we should
             # not increment the execution order here
@@ -204,23 +305,38 @@ class TrafficController:
 
         return instructions
 
+    def addInstructionAndMove(instructions, newInstructionData, carsToMove):
+        instruction = TrafficController.addInstruction(**newInstructionData)
+
+        if instruction:
+            instructions.append(instruction)
+
+            newDiffs = newInstructionData["newDiffs"]
+            secondLaneIdx = newInstructionData["secondLaneIdx"]
+            firstLaneIdx = newInstructionData["firstLaneIdx"]
+
+            newDiffs[secondLaneIdx] += carsToMove
+            newDiffs[firstLaneIdx] += -carsToMove
+
     def setNewLanes(traffic, instructions):
-        totalIterations = sum(instruction['carsToChangeLanes'] for instruction in instructions)
+        totalIterations = sum(
+            instruction["carsToChangeLanes"] for instruction in instructions
+        )
         carsToMove = []
         increment = 1
         j = 0
 
         for i in range(0, totalIterations):
-            if increment > instructions[j]['carsToChangeLanes']:
+            if increment > instructions[j]["carsToChangeLanes"]:
                 increment = 1
                 j += 1
 
-            currentLane = instructions[j]['currentLane'] - 1
+            currentLane = instructions[j]["currentLane"] - 1
 
-            cars = traffic[currentLane]['cars']
+            cars = traffic[currentLane]["cars"]
 
-            cars[increment - 1].newLane = instructions[j]['newLane']
-            cars[increment - 1].executionOrder = instructions[j]['executionOrder']
+            cars[increment - 1].newLane = instructions[j]["newLane"]
+            cars[increment - 1].executionOrder = instructions[j]["executionOrder"]
 
             carsToMove.append(cars[increment - 1])
 
