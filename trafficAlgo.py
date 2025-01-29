@@ -19,9 +19,9 @@ print(f"carsInEachLane: {tc.carsInEachLane}")
 print(f"totalCars: {tc.totalCars}")
 print(f"avgDistribution: {tc.avgDistribution}")
 
-diffsFromAvg = TrafficController.getDiffFromAvg(tc.carsInEachLane, tc.avgDistribution)
+diffsFromAvg = tc.getDiffFromAvg(tc.carsInEachLane, tc.avgDistribution)
 
-laneChangeInstructions = TrafficController.setInstructions(
+laneChangeInstructions = tc.setInstructions(
     tc.avgDistribution,
     diffsFromAvg,
     tc.laneClosure,
